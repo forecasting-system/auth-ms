@@ -1,16 +1,24 @@
 import * as bcrypt from 'bcrypt';
-import { HttpStatus, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { RpcException } from '@nestjs/microservices';
 
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { envs } from 'src/config';
 import { LoginUserDto, RegisterUserDto } from 'src/dto';
+import { PrismaClient } from 'generated/prisma';
 
 @Injectable()
-export class AuthService {
+export class AuthService extends PrismaClient implements OnModuleInit {
+  private readonly logger = new Logger('AuthService');
+
   constructor(private readonly jwtService: JwtService) {
-    // super();
+    super();
+  }
+
+  async onModuleInit() {
+    await this.$connect();
+    this.logger.log('Database connected');
   }
 
   async signJWT(payload: JwtPayload) {
@@ -36,14 +44,11 @@ export class AuthService {
     const { email, name, password } = registerUserDto;
 
     try {
-      //   const user = await this.user.findUnique({
-      //     where: {
-      //       email,
-      //     },
-      //   });
-
-      // TODO: temp code to be removed
-      const user = null;
+      const user = await this.user.findUnique({
+        where: {
+          email,
+        },
+      });
 
       if (user) {
         throw new RpcException({
@@ -52,25 +57,15 @@ export class AuthService {
         });
       }
 
-      //   const newUser = await this.user.create({
-      //     data: {
-      //       email,
-      //       password: bcrypt.hashSync(password, 10),
-      //       name,
-      //     },
-      //   });
+      const newUser = await this.user.create({
+        data: {
+          email,
+          password: bcrypt.hashSync(password, 10),
+          name,
+        },
+      });
 
-      //   const { password: __, ...rest } = newUser;
-
-      // TODO: temp code to be removed
-      const data = {
-        id: '1',
-        email,
-        password: bcrypt.hashSync(password, 10),
-        name,
-      };
-
-      const { password: __, ...rest } = data;
+      const { password: __, ...rest } = newUser;
 
       return {
         user: rest,
@@ -88,17 +83,9 @@ export class AuthService {
     const { email, password } = loginUserDto;
 
     try {
-      //   const user = await this.user.findUnique({
-      //     where: { email },
-      //   });
-
-      // TODO: temp code to be removed
-      const user = {
-        id: '1',
-        email,
-        password: bcrypt.hashSync(password, 10),
-        name: 'John Doe',
-      };
+      const user = await this.user.findUnique({
+        where: { email },
+      });
 
       if (!user) {
         throw new RpcException({
