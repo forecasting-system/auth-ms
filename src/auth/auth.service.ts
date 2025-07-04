@@ -1,18 +1,32 @@
 import * as bcrypt from 'bcrypt';
-import { HttpStatus, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  HttpStatus,
+  Inject,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { RpcException } from '@nestjs/microservices';
 
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { envs } from 'src/config';
-import { LoginUserDto, RegisterUserDto } from 'src/dto';
+import { LoginUserDto, AuthDataOutDto, RegisterUserDto } from 'src/dto';
 import { PrismaClient } from 'generated/prisma';
+import {
+  AUTH_REPOSITORY,
+  AuthRepository,
+} from 'src/storage/interface/auth.repository.interface';
+import { NewUser } from 'src/model/user';
 
 @Injectable()
 export class AuthService extends PrismaClient implements OnModuleInit {
   private readonly logger = new Logger('AuthService');
 
-  constructor(private readonly jwtService: JwtService) {
+  constructor(
+    private readonly jwtService: JwtService,
+    @Inject(AUTH_REPOSITORY) private readonly authRepository: AuthRepository,
+  ) {
     super();
   }
 
@@ -25,7 +39,7 @@ export class AuthService extends PrismaClient implements OnModuleInit {
     return this.jwtService.sign(payload);
   }
 
-  async verifyToken(token: string) {
+  async verifyToken(token: string): Promise<AuthDataOutDto> {
     try {
       const { sub, iat, exp, ...user } = this.jwtService.verify(token, {
         secret: envs.jwtSecret,
@@ -40,15 +54,13 @@ export class AuthService extends PrismaClient implements OnModuleInit {
     }
   }
 
-  async registerUser(registerUserDto: RegisterUserDto) {
+  async registerUser(
+    registerUserDto: RegisterUserDto,
+  ): Promise<AuthDataOutDto> {
     const { email, name, password } = registerUserDto;
 
     try {
-      const user = await this.user.findUnique({
-        where: {
-          email,
-        },
-      });
+      const user = await this.authRepository.findUser(email);
 
       if (user) {
         throw new RpcException({
@@ -57,15 +69,13 @@ export class AuthService extends PrismaClient implements OnModuleInit {
         });
       }
 
-      const newUser = await this.user.create({
-        data: {
-          email,
-          password: bcrypt.hashSync(password, 10),
-          name,
-        },
-      });
+      const hashedPassword = bcrypt.hashSync(password, 10);
 
-      const { password: __, ...rest } = newUser;
+      const newUser = new NewUser(email, name, hashedPassword);
+
+      const createdUser = await this.authRepository.createUser(newUser);
+
+      const { password: __, ...rest } = createdUser;
 
       return {
         user: rest,
@@ -79,13 +89,11 @@ export class AuthService extends PrismaClient implements OnModuleInit {
     }
   }
 
-  async loginUser(loginUserDto: LoginUserDto) {
+  async loginUser(loginUserDto: LoginUserDto): Promise<AuthDataOutDto> {
     const { email, password } = loginUserDto;
 
     try {
-      const user = await this.user.findUnique({
-        where: { email },
-      });
+      const user = await this.authRepository.findUser(email);
 
       if (!user) {
         throw new RpcException({

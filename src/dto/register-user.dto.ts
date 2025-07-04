@@ -12,3 +12,14 @@ export class RegisterUserDto {
   @IsStrongPassword()
   password: string;
 }
+
+export class RegisterUserOutDto {
+  name: string;
+  email: string;
+  id: string;
+}
+
+export class AuthDataOutDto {
+  user: RegisterUserOutDto;
+  token: string;
+}
